@@ -1,0 +1,15 @@
+#!/bin/sh
+REDIS_HOST=${REDIS_HOST:-redis.default.svc.cluster.local}
+REDIS_PORT=${REDIS_PORT:-6379}
+
+CMD="redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT}"
+
+if [ "${REDIS_PASSWORD}" != "" ]; then
+  CMD="${CMD} --no-auth-warning -a ${REDIS_PASSWORD}"
+fi
+
+CMD="${CMD} flushall"
+
+# execute
+echo "Flushing cache"
+${CMD}

@@ -1,0 +1,9 @@
+#!/bin/sh
+IMAGE=csabasulyok/alp
+
+# build
+docker build -t $IMAGE .
+# login
+docker login
+# push
+docker push $IMAGE

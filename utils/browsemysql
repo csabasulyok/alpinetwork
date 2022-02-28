@@ -1,0 +1,22 @@
+#!/bin/sh
+MYSQL_HOST=${MYSQL_HOST:-mysql.default.svc.cluster.local}
+MYSQL_PORT=${MYSQL_PORT:-3306}
+MYSQL_USER=${MYSQL_USER:-root}
+
+if [ "${MYSQL_PWD}" == "" ]; then
+  echo "MYSQL_PWD must be set"
+  exit 1
+fi
+
+CMD="mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u${MYSQL_USER}"
+
+if [ "${MYSQL_DATABASE}" != "" ]; then
+  CMD="${CMD} -D ${MYSQL_DATABASE}"
+fi
+
+if [ "${MYSQL_OPTS}" != "" ]; then
+  CMD="${CMD} ${MYSQL_OPTS}"
+fi
+
+# execute
+${CMD}

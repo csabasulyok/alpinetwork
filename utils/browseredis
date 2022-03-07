@@ -4,6 +4,10 @@ REDIS_PORT=${REDIS_PORT:-6379}
 
 CMD="redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT}"
 
+if [ "${REDIS_PASSWORD_FILE}" != "" ]; then
+  REDIS_PASSWORD=`cat ${REDIS_PASSWORD_FILE}`
+fi
+
 if [ "${REDIS_PASSWORD}" != "" ]; then
   CMD="${CMD} --no-auth-warning -a ${REDIS_PASSWORD}"
 fi

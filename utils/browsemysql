@@ -3,6 +3,10 @@ MYSQL_HOST=${MYSQL_HOST:-mysql.default.svc.cluster.local}
 MYSQL_PORT=${MYSQL_PORT:-3306}
 MYSQL_USER=${MYSQL_USER:-root}
 
+if [ "${MYSQL_PWD_FILE}" != "" ]; then
+  MYSQL_PWD=`cat ${MYSQL_PWD_FILE}`
+fi
+
 if [ "${MYSQL_PWD}" == "" ]; then
   echo "MYSQL_PWD must be set"
   exit 1

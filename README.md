@@ -11,22 +11,24 @@
 
 ### MySQL
 
-| Name             | Mandatory | Default                           |
-| ---------------- | --------- | --------------------------------- |
-| `MYSQL_HOST`     |           | `mysql.default.svc.cluster.local` |
-| `MYSQL_PORT`     |           | 3306                              |
-| `MYSQL_USER`     |           | `root`                            |
-| `MYSQL_PWD`      | *yes*     | *none*                            |
-| `MYSQL_DATABASE` |           | *none*                            |
-| `MYSQL_OPTS`     |           | *none*                            |
+| Name             | Mandatory             | Default                           |
+| ---------------- | --------------------- | --------------------------------- |
+| `MYSQL_HOST`     |                       | `mysql.default.svc.cluster.local` |
+| `MYSQL_PORT`     |                       | 3306                              |
+| `MYSQL_USER`     |                       | `root`                            |
+| `MYSQL_PWD`      | *either this or file* | *none*                            |
+| `MYSQL_PWD_FILE` | *either this or file* | *none*                            |
+| `MYSQL_DATABASE` |                       | *none*                            |
+| `MYSQL_OPTS`     |                       | *none*                            |
 
 ### Redis
 
-| Name             | Mandatory | Default                           |
-| ---------------- | --------- | --------------------------------- |
-| `REDIS_HOST`     |           | `redis.default.svc.cluster.local` |
-| `REDIS_PORT`     |           | 6379                              |
-| `REDIS_PASSWORD` |           | *none*                            |
+| Name                  | Mandatory | Default                           |
+| --------------------- | --------- | --------------------------------- |
+| `REDIS_HOST`          |           | `redis.default.svc.cluster.local` |
+| `REDIS_PORT`          |           | 6379                              |
+| `REDIS_PASSWORD`      |           | *none*                            |
+| `REDIS_PASSWORD_FILE` |           | *none*                            |
 
 ### AWS
 

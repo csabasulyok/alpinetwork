@@ -39,10 +39,10 @@ Everything from [documentation](https://docs.aws.amazon.com/cli/latest/userguide
 
 ```bash
 # build
-docker build -t csabasulyok/alp .
+docker build -t csabasulyok/alp:v1.9.6 .
 # push
 docker login
-docker push csabasulyok/alp
+docker push csabasulyok/alp:v1.9.6
 ```
 
 # Setting up in k8s

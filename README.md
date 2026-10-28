@@ -7,6 +7,8 @@
     - `browsemysql` - interactive console to browse a MariaDB or MySQL database; uses env vars `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PWD`, `MYSQL_DATABASE`
     - `browseredis` - interactive console to browse Redis cache;  uses env vars `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
     - `flushredis` - calls `flushall` on Redis cache; uses same env vars as above
+    - `backupmysql` - dumps a MariaDB/MySQL database to S3 and rotates old dumps (see [Backup & restore](#backup--restore))
+    - `restoremysql` - restores the latest (or a given) dump from S3 into a MariaDB/MySQL database
 
 ## Env vars
 
@@ -60,6 +62,63 @@ rclone copy src:nrandprimary dst:nrandprimary --checksum --transfers 16 -P --dry
 rclone copy src:nrandprimary dst:nrandprimary --checksum --transfers 16 -P
 ```
 
+
+## Backup & restore
+
+`backupmysql` and `restoremysql` replace the former `csabasulyok/mysql-backup-s3` and `mysql-restore-s3` images. They work with both MariaDB and MySQL, and dumps restore across the two in either direction. They use the MariaDB/MySQL vars above and the standard AWS CLI vars for S3, e.g. `AWS_ENDPOINT_URL` for MinIO/SeaweedFS and `AWS_DEFAULT_REGION`. On AWS, leave out the credentials to use the pod's IAM role. Besides these:
+
+| Name                         | Used by | Default                    | Description                                                                             |
+| ---------------------------- | ------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| `S3_BUCKET`                  | both    | *mandatory*                | bucket of the dumps, created on first backup if missing                                 |
+| `S3_PREFIX`                  | both    | `backup`                   | folder of the dumps in the bucket; for restore, include the db folder (`<prefix>/<db>`) |
+| `MYSQL_DATABASE`             | both    | *all non-system databases* | backup: comma-separated databases to dump; restore: target database                     |
+| `AWS_ACCESS_KEY_ID_FILE`     | both    | *none*                     | file variant of `AWS_ACCESS_KEY_ID`                                                     |
+| `AWS_SECRET_ACCESS_KEY_FILE` | both    | *none*                     | file variant of `AWS_SECRET_ACCESS_KEY`                                                 |
+| `MYSQLDUMP_OPTS`             | backup  | `--single-transaction ...` | `mariadb-dump` options, see `utils/backupmysql`                                         |
+| `S3_RETAIN_NUM`              | backup  | *none* (keep everything)   | number of latest dumps to keep per database, older ones deleted                         |
+| `S3_FILENAME`                | restore | *latest dump*              | name of the dump to restore within `S3_PREFIX`                                          |
+
+`backupmysql` dumps each database into its own file, `<S3_PREFIX>/<db>/<UTC timestamp>.dump.sql.gz`, so every folder sorts chronologically and is rotated on its own. Without `MYSQL_DATABASE` it dumps every database the user can see, except `information_schema`, `performance_schema`, `mysql` and `sys`. A failing database doesn't stop the others, but the script exits with an error at the end. The dumps contain no `CREATE DATABASE`/`USE`, so `restoremysql` restores one database at a time into `MYSQL_DATABASE`, e.g. `S3_PREFIX=mariadb/seaweedfs MYSQL_DATABASE=seaweedfs restoremysql`. Keep other files out of these folders: rotation deletes every older `*.sql.gz` in them.
+
+Dumps begin with MariaDB's `/*M!999999\- enable the sandbox mode */` line. Restore them with the MariaDB client (`restoremysql`, `browsemysql`), which understands it. Oracle's `mysql` client rejects it.
+
+In k8s, run the backup as a CronJob with `command: ["backupmysql"]` (scheduling is k8s' job, the old image's `SCHEDULE`/crond is gone):
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: mysql-backup
+              image: csabasulyok/alp:v1.10.0
+              command: ["backupmysql"]
+              env:
+                - { name: MYSQL_HOST, value: mariadb.mariadb.svc.cluster.local }
+                - { name: MYSQL_USER, value: nrand }
+                - { name: MYSQL_DATABASE, value: "nrand,seaweedfs" }
+                - { name: MYSQL_PWD_FILE, value: /secrets/mysql_password }
+                - { name: AWS_ENDPOINT_URL, value: http://minio.minio.svc.cluster.local:9000 }
+                - { name: AWS_DEFAULT_REGION, value: eu-central-1 }
+                - { name: AWS_ACCESS_KEY_ID_FILE, value: /secrets/s3_access_key_id }
+                - { name: AWS_SECRET_ACCESS_KEY_FILE, value: /secrets/s3_secret_access_key }
+                - { name: S3_BUCKET, value: nrand-backup }
+                - { name: S3_PREFIX, value: mariadb }
+                - { name: S3_RETAIN_NUM, value: "30" }
+              volumeMounts:
+                - { name: secrets, mountPath: /secrets, readOnly: true }
+          volumes:
+            - name: secrets
+              secret:
+                secretName: mysql-backup-secrets
+```
 
 # Building & releasing
 

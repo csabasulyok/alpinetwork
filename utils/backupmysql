@@ -1,0 +1,89 @@
+#!/bin/sh
+# Dumps MariaDB/MySQL databases one by one, uploads them gzipped to S3_PREFIX/<db>/ and keeps only the latest
+# S3_RETAIN_NUM dumps per database.
+# Merged from the mysql-backup-s3 image (github.com/csabasulyok/dockerfiles, branch prod).
+set -eo pipefail
+
+export MYSQL_HOST="${MYSQL_HOST:-mysql.default.svc.cluster.local}"
+export MYSQL_PORT="${MYSQL_PORT:-3306}"
+export MYSQL_USER="${MYSQL_USER:-root}"
+MYSQLDUMP_OPTS="${MYSQLDUMP_OPTS:---quote-names --quick --add-drop-table --add-locks --allow-keywords --disable-keys --extended-insert --single-transaction --create-options --comments --net_buffer_length=16384}"
+S3_PREFIX="${S3_PREFIX:-backup}"
+
+# file variants of secrets
+if [ "${MYSQL_PWD_FILE}" != "" ]; then
+  export MYSQL_PWD="$(cat "${MYSQL_PWD_FILE}")"
+fi
+if [ "${AWS_ACCESS_KEY_ID_FILE}" != "" ]; then
+  export AWS_ACCESS_KEY_ID="$(cat "${AWS_ACCESS_KEY_ID_FILE}")"
+fi
+if [ "${AWS_SECRET_ACCESS_KEY_FILE}" != "" ]; then
+  export AWS_SECRET_ACCESS_KEY="$(cat "${AWS_SECRET_ACCESS_KEY_FILE}")"
+fi
+
+if [ "${MYSQL_PWD}" == "" ]; then
+  echo "MYSQL_PWD must be set"
+  exit 1
+fi
+if [ "${S3_BUCKET}" == "" ]; then
+  echo "S3_BUCKET must be set"
+  exit 1
+fi
+
+# databases to dump: comma-separated MYSQL_DATABASE, or every database except the system ones
+if [ "${MYSQL_DATABASE}" != "" ]; then
+  DATABASES="$(echo "${MYSQL_DATABASE}" | tr ',' ' ')"
+else
+  echo "Listing databases on ${MYSQL_HOST}"
+  ALL_DATABASES="$(mariadb -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u"${MYSQL_USER}" -N -e 'SHOW DATABASES')"
+  DATABASES="$(echo "${ALL_DATABASES}" | grep -Ev '^(information_schema|performance_schema|mysql|sys)$' || true)"
+fi
+if [ "$(echo ${DATABASES})" == "" ]; then
+  echo "No databases to back up"
+  exit 1
+fi
+
+if ! aws s3api head-bucket --bucket "${S3_BUCKET}" >/dev/null 2>&1; then
+  echo "Bucket ${S3_BUCKET} not found (or owned by someone else), attempting to create"
+  aws s3api create-bucket --bucket "${S3_BUCKET}"
+fi
+
+DUMP_FILE="/tmp/dump.sql.gz"
+S3_FILE="$(date -u +"%Y-%m-%dT%H%M%SZ").dump.sql.gz"
+FAILED=""
+
+# one dump per database, under its own folder: S3_PREFIX/<db>/<timestamp>.dump.sql.gz
+for DB in ${DATABASES}; do
+  S3_DIR="s3://${S3_BUCKET}/${S3_PREFIX}/${DB}"
+
+  echo "Creating dump of ${DB} from ${MYSQL_HOST}"
+  if ! mariadb-dump -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u"${MYSQL_USER}" ${MYSQLDUMP_OPTS} "${DB}" | gzip >"${DUMP_FILE}"; then
+    echo "Error creating dump of ${DB}" >&2
+    FAILED="${FAILED} ${DB}"
+    continue
+  fi
+
+  echo "Uploading ${S3_DIR}/${S3_FILE}"
+  if ! aws s3 cp --no-progress "${DUMP_FILE}" "${S3_DIR}/${S3_FILE}"; then
+    echo "Error uploading dump of ${DB}" >&2
+    FAILED="${FAILED} ${DB}"
+    continue
+  fi
+  rm "${DUMP_FILE}"
+
+  # rotate: delete all but the latest S3_RETAIN_NUM dumps of this database
+  if [ "${S3_RETAIN_NUM}" != "" ]; then
+    echo "Rotating backups of ${DB}, retaining only ${S3_RETAIN_NUM} files"
+    for OLD_FILE in $(aws s3 ls "${S3_DIR}/" | awk '{ print $4 }' | grep '\.sql\.gz$' | sort | head -n "-${S3_RETAIN_NUM}"); do
+      echo "Deleting stale file ${OLD_FILE}"
+      aws s3 rm "${S3_DIR}/${OLD_FILE}"
+    done
+  fi
+done
+
+rm -f "${DUMP_FILE}"
+if [ "${FAILED}" != "" ]; then
+  echo "SQL backup failed for:${FAILED}" >&2
+  exit 1
+fi
+echo "SQL backup finished"

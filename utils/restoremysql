@@ -1,0 +1,52 @@
+#!/bin/sh
+# Restores a gzipped dump from S3 (S3_FILENAME, or the latest one under S3_PREFIX) into a MariaDB/MySQL database.
+# Merged from the mysql-restore-s3 image (github.com/csabasulyok/dockerfiles, branch prod).
+set -eo pipefail
+
+export MYSQL_HOST="${MYSQL_HOST:-mysql.default.svc.cluster.local}"
+export MYSQL_PORT="${MYSQL_PORT:-3306}"
+export MYSQL_USER="${MYSQL_USER:-root}"
+S3_PREFIX="${S3_PREFIX:-backup}"
+
+# file variants of secrets
+if [ "${MYSQL_PWD_FILE}" != "" ]; then
+  export MYSQL_PWD="$(cat "${MYSQL_PWD_FILE}")"
+fi
+if [ "${AWS_ACCESS_KEY_ID_FILE}" != "" ]; then
+  export AWS_ACCESS_KEY_ID="$(cat "${AWS_ACCESS_KEY_ID_FILE}")"
+fi
+if [ "${AWS_SECRET_ACCESS_KEY_FILE}" != "" ]; then
+  export AWS_SECRET_ACCESS_KEY="$(cat "${AWS_SECRET_ACCESS_KEY_FILE}")"
+fi
+
+if [ "${MYSQL_PWD}" == "" ]; then
+  echo "MYSQL_PWD must be set"
+  exit 1
+fi
+if [ "${S3_BUCKET}" == "" ]; then
+  echo "S3_BUCKET must be set"
+  exit 1
+fi
+
+S3_DIR="s3://${S3_BUCKET}/${S3_PREFIX}"
+
+if [ "${S3_FILENAME}" == "" ]; then
+  echo "Finding latest backup in ${S3_DIR}"
+  S3_FILENAME="$(aws s3 ls "${S3_DIR}/" | awk '{ print $4 }' | grep '\.sql\.gz$' | sort | tail -n 1)"
+  if [ "${S3_FILENAME}" == "" ]; then
+    echo "No backup found in ${S3_DIR}"
+    exit 1
+  fi
+fi
+
+CMD="mariadb -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u${MYSQL_USER}"
+if [ "${MYSQL_DATABASE}" != "" ]; then
+  CMD="${CMD} -D ${MYSQL_DATABASE}"
+fi
+if [ "${MYSQL_OPTS}" != "" ]; then
+  CMD="${CMD} ${MYSQL_OPTS}"
+fi
+
+echo "Restoring ${S3_DIR}/${S3_FILENAME} with: ${CMD}"
+aws s3 cp "${S3_DIR}/${S3_FILENAME}" - | gzip -dc | ${CMD}
+echo "SQL restore finished"

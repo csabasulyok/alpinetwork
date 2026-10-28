@@ -1,5 +1,6 @@
 #!/bin/sh
 IMAGE=csabasulyok/alp
+VERSION=v$(cat VERSION)
 
-# build
-docker build -t $IMAGE .
+# build (CI pushes on master)
+docker build -t $IMAGE:"$VERSION" -t $IMAGE:latest .

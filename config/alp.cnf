@@ -1,0 +1,6 @@
+# Defaults for every MariaDB client tool (mariadb, mariadb-dump, ...)
+[client]
+# MariaDB 11.4+ clients use TLS and verify the server certificate by default. This fails against MySQL
+# (5.7 only offers TLS 1.0/1.1, 8+ uses a self-signed certificate), so connect in plain text like the
+# 10.6 client of earlier versions did. Pass --ssl in MYSQL_OPTS to turn it back on.
+skip-ssl

@@ -1,10 +1,10 @@
 #!/bin/sh
-export MYSQL_HOST=${MYSQL_HOST:-mysql.default.svc.cluster.local}
-export MYSQL_PORT=${MYSQL_PORT:-3306}
-export MYSQL_USER=${MYSQL_USER:-root}
+export MYSQL_HOST="${MYSQL_HOST:-mysql.default.svc.cluster.local}"
+export MYSQL_PORT="${MYSQL_PORT:-3306}"
+export MYSQL_USER="${MYSQL_USER:-root}"
 
 if [ "${MYSQL_PWD_FILE}" != "" ]; then
-  export MYSQL_PWD=`cat ${MYSQL_PWD_FILE}`
+  export MYSQL_PWD="$(cat "${MYSQL_PWD_FILE}")"
 fi
 
 if [ "${MYSQL_PWD}" == "" ]; then
@@ -12,7 +12,7 @@ if [ "${MYSQL_PWD}" == "" ]; then
   exit 1
 fi
 
-export CMD="mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u${MYSQL_USER}"
+export CMD="mariadb -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u${MYSQL_USER}"
 
 if [ "${MYSQL_DATABASE}" != "" ]; then
   export CMD="${CMD} -D ${MYSQL_DATABASE}"
